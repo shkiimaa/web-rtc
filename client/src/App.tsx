@@ -1,7 +1,8 @@
 import SocketChat from './SocketChat';
+import IoChat from './IoChat';
 
 function App() {
-  return <SocketChat />;
+  return <IoChat />;
 }
 
 export default App;

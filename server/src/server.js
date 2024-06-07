@@ -1,12 +1,17 @@
 import http from 'http';
 import express from 'express';
 import WebSocket, { WebSocketServer } from 'ws';
+import { Server } from 'socket.io';
 
 const app = express();
 const port = 8080;
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const io = new Server(server, { cors: ['http//:localhost:5173'] });
+
+io.on('connection', (socket) => console.log(socket));
+
+/* const wss = new WebSocketServer({ server });
 
 const sockets = [];
 
@@ -32,7 +37,7 @@ wss.on('connection', (socket) => {
         socket.send(`${socket.nickname} : ${parsedMessage.payload}`)
       );
   });
-});
+}); */
 
 server.listen(port, () => {
   console.log(`HTTP PORT : ${port}`);
