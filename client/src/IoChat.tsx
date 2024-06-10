@@ -8,8 +8,6 @@ interface IMessage {
 
 const IoChat = () => {
   const ws = useRef<Socket>();
-  const socketIO = ws.current;
-
   const [nickname, setNickname] = useState<IMessage>({
     type: 'nickname',
     payload: '',
@@ -18,28 +16,19 @@ const IoChat = () => {
     type: 'message',
     payload: '',
   });
-
-  const [room, setRoom] = useState<IMessage>({
-    type: 'room',
-    payload: '',
-  });
-
+  const [room, setRoom] = useState<IMessage>({ type: 'room', payload: '' });
   const [messageList, setMessageList] = useState<string[]>([]);
 
   useEffect(() => {
     ws.current = io('ws://localhost:8080');
+    ws.current.on('welcome', (msg) => {
+      console.log('하이하이하이');
+    });
 
-    // ws.current.onopen = () => {
-    //   console.log('open');
-    // };
-
-    // ws.current.onclose = () => {
-    //   console.log('close');
-    // };
-
-    // ws.current.onmessage = (message) => {
-    //   setMessageList((prev) => [...prev, message.data]);
-    // };
+    // 컴포넌트 언마운트 시 클린업
+    return () => {
+      ws.current?.disconnect();
+    };
   }, []);
 
   const sendMessageFn = (e: React.FormEvent<HTMLFormElement>) => {
@@ -52,9 +41,11 @@ const IoChat = () => {
     ws.current?.send(JSON.stringify(nickname));
   };
 
-  const sendRoomFn = (e: React.FormEvent<HTMLFormElement>) => {
+  const enterRoomFn = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    socketIO?.emit('room', room);
+    ws.current?.emit('enter_room', room, (msg: string) => {
+      console.log(msg);
+    });
   };
 
   const onChangeMessageFn = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,7 +57,7 @@ const IoChat = () => {
   };
 
   const onChangeRoomFn = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setRoom({ ...nickname, payload: e.target.value });
+    setRoom({ ...room, payload: e.target.value });
   };
 
   return (
@@ -76,12 +67,13 @@ const IoChat = () => {
         <button>Disconnect</button>
       </div>
 
-      <form onSubmit={sendRoomFn}>
+      <form onSubmit={enterRoomFn}>
         <input
           type="text"
           onChange={onChangeRoomFn}
           name="room"
           value={room.payload}
+          placeholder="room"
         />
         <button type="submit">Send</button>
       </form>

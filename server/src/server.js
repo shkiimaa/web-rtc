@@ -9,7 +9,14 @@ const port = 8080;
 const server = http.createServer(app);
 const io = new Server(server, { cors: ['http//:localhost:5173'] });
 
-io.on('connection', (socket) => console.log(socket));
+io.on('connection', (socket) => {
+  socket.on('enter_room', (room, cb) => {
+    socket.join(room.payload);
+    socket.to(room.payload).emit('welcome');
+
+    cb(`${room.payload} 접속 성공`);
+  });
+});
 
 /* const wss = new WebSocketServer({ server });
 
