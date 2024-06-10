@@ -1,28 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import { Socket, io } from 'socket.io-client';
 
-interface IMessage {
-  type: 'nickname' | 'message' | 'room' | '';
-  payload: string;
-}
-
 const IoChat = () => {
   const ws = useRef<Socket>();
-  const [nickname, setNickname] = useState<IMessage>({
-    type: 'nickname',
-    payload: '',
-  });
-  const [message, setMessage] = useState<IMessage>({
-    type: 'message',
-    payload: '',
-  });
-  const [room, setRoom] = useState<IMessage>({ type: 'room', payload: '' });
+  const [nickname, setNickname] = useState<string>('');
+  const [message, setMessage] = useState<string>('');
+  const [room, setRoom] = useState<string>('');
   const [messageList, setMessageList] = useState<string[]>([]);
 
   useEffect(() => {
-    ws.current = io('ws://localhost:8080');
+    ws.current = io('http://localhost:8080');
+
+    ws.current.on('connection', (msg) => {
+      console.log(msg);
+    });
+
     ws.current.on('welcome', (msg) => {
-      console.log('하이하이하이');
+      console.log(msg);
+    });
+
+    ws.current.on('new_message', (new_msg, nickname) => {
+      setMessageList([...message, `${nickname} : ${new_msg}`]);
+    });
+
+    ws.current.on('exit', (msg) => {
+      console.log(msg);
     });
 
     // 컴포넌트 언마운트 시 클린업
@@ -31,33 +33,33 @@ const IoChat = () => {
     };
   }, []);
 
-  const sendMessageFn = (e: React.FormEvent<HTMLFormElement>) => {
+  const submitMessageFn = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    ws.current?.send(JSON.stringify(message));
+    console.log(room);
+
+    ws.current?.emit('message', message, room);
   };
 
-  const sendNicknameFn = (e: React.FormEvent<HTMLFormElement>) => {
+  const submitNicknameFn = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    ws.current?.send(JSON.stringify(nickname));
+    ws.current?.emit('nickname', nickname);
   };
 
   const enterRoomFn = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    ws.current?.emit('enter_room', room, (msg: string) => {
-      console.log(msg);
-    });
+    ws.current?.emit('enter_room', room);
   };
 
   const onChangeMessageFn = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMessage({ ...message, payload: e.target.value });
+    setMessage(e.target.value);
   };
 
   const onChangeNicknameFn = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNickname({ ...nickname, payload: e.target.value });
+    setNickname(e.target.value);
   };
 
   const onChangeRoomFn = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setRoom({ ...room, payload: e.target.value });
+    setRoom(e.target.value);
   };
 
   return (
@@ -65,6 +67,7 @@ const IoChat = () => {
       <div>
         <button>Connect</button>
         <button>Disconnect</button>
+        <button>Exit Room</button>
       </div>
 
       <form onSubmit={enterRoomFn}>
@@ -72,30 +75,32 @@ const IoChat = () => {
           type="text"
           onChange={onChangeRoomFn}
           name="room"
-          value={room.payload}
+          value={room}
           placeholder="room"
         />
-        <button type="submit">Send</button>
+        <button type="submit">Enter Room</button>
       </form>
 
-      <form onSubmit={sendNicknameFn}>
+      <form onSubmit={submitNicknameFn}>
         <input
           type="text"
           onChange={onChangeNicknameFn}
           name="nickname"
-          value={nickname.payload}
+          value={nickname}
+          placeholder="nickname"
         />
-        <button type="submit">Send</button>
+        <button type="submit">Send Nickname</button>
       </form>
 
-      <form onSubmit={sendMessageFn}>
+      <form onSubmit={submitMessageFn}>
         <input
           type="text"
           onChange={onChangeMessageFn}
           name="message"
-          value={message.payload}
+          value={message}
+          placeholder="message"
         />
-        <button type="submit">Send</button>
+        <button type="submit">Send Message</button>
       </form>
 
       <ul>
