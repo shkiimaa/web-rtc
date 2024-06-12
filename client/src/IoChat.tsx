@@ -6,7 +6,12 @@ const IoChat = () => {
   const [nickname, setNickname] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [room, setRoom] = useState<string>('');
+  const [countUser, setCountUser] = useState<string>('');
+
   const [messageList, setMessageList] = useState<string[]>([]);
+  const [roomList, setRoomList] = useState<string[]>([]);
+
+  console.log(messageList);
 
   useEffect(() => {
     ws.current = io('http://localhost:8080');
@@ -15,12 +20,17 @@ const IoChat = () => {
       console.log(msg);
     });
 
-    ws.current.on('welcome', (msg) => {
+    ws.current.on('join_room', (msg, countRoom) => {
       console.log(msg);
+      setCountUser(countRoom);
+    });
+
+    ws.current.on('room_change', (roomList) => {
+      setRoomList(roomList);
     });
 
     ws.current.on('new_message', (new_msg, nickname) => {
-      setMessageList([...message, `${nickname} : ${new_msg}`]);
+      setMessageList((prev) => [...prev, `${nickname} : ${new_msg}`]);
     });
 
     ws.current.on('exit', (msg) => {
@@ -64,10 +74,18 @@ const IoChat = () => {
 
   return (
     <div>
+      <ul>
+        {roomList.map((room, idx) => (
+          <li key={idx}>
+            <button>{room}</button>
+          </li>
+        ))}
+      </ul>
       <div>
         <button>Connect</button>
         <button>Disconnect</button>
         <button>Exit Room</button>
+        <p>{countUser}</p>
       </div>
 
       <form onSubmit={enterRoomFn}>
