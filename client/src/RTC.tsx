@@ -57,35 +57,36 @@ const RTC = () => {
   const RTCConnection = async () => {
     rtc.current = new RTCPeerConnection();
 
-    rtc.current.addEventListener('icecandidate', (data) => {
-      socketIo.current?.emit('ice', data.candidate, room.current);
-    });
-
-    rtc.current.addEventListener('track', (data) => {
-      if (opponentVideoRef.current)
-        opponentVideoRef.current.srcObject = data.streams[0];
-    });
-
     userMedia
       ?.getTracks()
       .forEach((track) => rtc?.current?.addTrack(track, userMedia));
   };
 
+  rtc.current?.addEventListener('icecandidate', (data) => {
+    socketIo.current?.emit('ice', data.candidate, room.current);
+  });
+
+  rtc.current?.addEventListener('track', (data) => {
+    console.log(data);
+
+    if (opponentVideoRef.current)
+      opponentVideoRef.current.srcObject = data.streams[0];
+  });
+
   useEffect(() => {
-    userMedia &&
-      RTCConnection().then(() => {
-        if (rtc.current) {
-          const videoSender = rtc.current
-            .getSenders()
-            .find((sender) => sender.track?.kind === 'video');
+    RTCConnection().then(() => {
+      if (rtc.current) {
+        const videoSender = rtc.current
+          .getSenders()
+          .find((sender) => sender.track?.kind === 'video');
 
-          const videoTrack = userMedia?.getVideoTracks()[0];
-          console.log(videoTrack);
+        const videoTrack = userMedia?.getVideoTracks()[0];
+        console.log(videoTrack);
 
-          videoTrack && videoSender?.replaceTrack(videoTrack);
-          console.log(videoSender);
-        }
-      });
+        videoTrack && videoSender?.replaceTrack(videoTrack);
+        console.log(videoTrack);
+      }
+    });
   }, [userMedia]);
 
   // Socket.io Function
@@ -101,29 +102,26 @@ const RTC = () => {
       console.log(countRoom);
     });
 
-    socketIo.current.on('welcome', (msg, roomCount) => {
-      console.log(msg);
-      console.log(roomCount);
-    });
-
+    // peer 연결 및 offer 전송
     socketIo.current.on('connectPeer', async () => {
-      console.log(room.current);
       const offer = await rtc.current?.createOffer();
       rtc.current?.setLocalDescription(offer);
+
       console.log('send offer');
 
       socketIo.current?.emit('offer', offer, room.current);
     });
 
+    // offer 수신 및 answer 전송
     socketIo.current.on('offer', async (offer) => {
-      console.log(offer);
       rtc.current?.setRemoteDescription(offer);
       const answer = await rtc.current?.createAnswer();
-      console.log(answer);
+
       rtc.current?.setLocalDescription(answer);
       socketIo.current?.emit('answer', answer, room.current);
     });
 
+    // answer 수신
     socketIo.current.on('answer', async (answer) => {
       rtc.current?.setRemoteDescription(answer);
     });
@@ -142,26 +140,19 @@ const RTC = () => {
   }, []);
 
   // Event Function
-  const onChangeDeviceFn = async (e: ChangeEvent<HTMLSelectElement>) => {
+  const onChangeDeviceFn = (e: ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
     setDevices({ ...devices, [name]: value });
 
-    if (name === 'videoId') {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: value },
-        audio: { deviceId: devices.audioId },
-      });
+    if (rtc.current && name === 'videoId') {
+      const videoSender = rtc.current
+        .getSenders()
+        .find((sender) => sender.track?.kind === 'video');
 
-      if (rtc.current) {
-        const videoSender = rtc.current
-          .getSenders()
-          .find((sender) => sender.track?.kind === 'video');
-        const videoTrack = newStream.getVideoTracks()[0];
-        if (videoSender && videoTrack) {
-          await videoSender.replaceTrack(videoTrack);
-          if (videoRef.current) videoRef.current.srcObject = newStream;
-        }
-      }
+      const videoTrack = userMedia?.getVideoTracks()[0];
+      console.log(videoTrack);
+
+      videoTrack && videoSender?.replaceTrack(videoTrack);
     }
   };
 
@@ -186,8 +177,6 @@ const RTC = () => {
     e.preventDefault();
     socketIo.current?.emit('join_room', room.current);
   };
-
-  console.log(roomName, '- roomName');
 
   return (
     <>
