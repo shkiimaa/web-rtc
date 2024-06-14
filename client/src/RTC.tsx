@@ -2,15 +2,16 @@ import React, { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Socket, io } from 'socket.io-client';
 
 const RTC = () => {
+  const dataChannel = useRef<RTCDataChannel>();
   const socketIo = useRef<Socket>();
   const rtc = useRef<RTCPeerConnection>();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const opponentVideoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   const room = useRef('');
 
   // MediaDevices State
-  const [userMedia, setUserMedia] = useState<MediaStream>();
+  const [localStream, setLocalStream] = useState<MediaStream>();
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>();
   const [audios, setAudios] = useState<MediaDeviceInfo[]>();
   const [devices, setDevices] = useState({ audioId: '', videoId: '' });
@@ -19,21 +20,18 @@ const RTC = () => {
   const [roomName, setRoomName] = useState('');
 
   // MediaDevices Function
-  const getMedia = async (deviceId?: {
-    videoId?: string;
-    audioId?: string;
-  }) => {
+  const getMedia = async () => {
     try {
+      console.log(devices);
+
       const myStream = await navigator.mediaDevices.getUserMedia({
-        audio:
-          deviceId?.audioId !== '' ? { deviceId: deviceId?.audioId } : true,
-        video:
-          deviceId?.videoId !== '' ? { deviceId: deviceId?.videoId } : true,
+        audio: devices.audioId !== '' ? { deviceId: devices.audioId } : true,
+        video: devices.videoId !== '' ? { deviceId: devices.videoId } : true,
       });
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = myStream;
-        setUserMedia(myStream);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = myStream;
+        setLocalStream(myStream);
       }
     } catch (error) {
       console.log(error);
@@ -49,54 +47,75 @@ const RTC = () => {
   };
 
   useEffect(() => {
-    getMedia(devices);
     getDevices();
+    getMedia();
   }, [devices]);
 
   // RTC Function
   const RTCConnection = async () => {
-    rtc.current = new RTCPeerConnection();
+    rtc.current = new RTCPeerConnection({
+      iceServers: [
+        {
+          urls: [
+            'stun:stun.l.google.com:19302',
+            'stun:stun1.l.google.com:19302',
+            'stun:stun2.l.google.com:19302',
+            'stun:stun3.l.google.com:19302',
+            'stun:stun4.l.google.com:19302',
+          ],
+        },
+      ],
+    });
 
-    userMedia
+    rtc.current.ontrack = (e) => {
+      console.log(e, '트랙변경 이벤트 리스터');
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = e.streams[0];
+      }
+    };
+
+    rtc.current.onicecandidate = (e) => {
+      socketIo.current?.emit('ice', e.candidate, room.current);
+    };
+
+    localStream
       ?.getTracks()
-      .forEach((track) => rtc?.current?.addTrack(track, userMedia));
+      .forEach((track) => rtc?.current?.addTrack(track, localStream));
   };
 
-  rtc.current?.addEventListener('icecandidate', (data) => {
-    socketIo.current?.emit('ice', data.candidate, room.current);
-  });
-
-  rtc.current?.addEventListener('track', (data) => {
-    console.log(data);
-
-    if (opponentVideoRef.current)
-      opponentVideoRef.current.srcObject = data.streams[0];
-  });
-
   useEffect(() => {
-    RTCConnection().then(() => {
+    (async () => {
+      await RTCConnection();
+
       if (rtc.current) {
+        const videoTrack = localStream?.getVideoTracks()[0];
         const videoSender = rtc.current
           .getSenders()
           .find((sender) => sender.track?.kind === 'video');
 
-        const videoTrack = userMedia?.getVideoTracks()[0];
-        console.log(videoTrack);
+        console.log(videoSender);
+        console.log(localStream?.getVideoTracks());
 
-        videoTrack && videoSender?.replaceTrack(videoTrack);
-        console.log(videoTrack);
+        // bug
+        if (videoTrack) {
+          console.log('비디오 트랙 변경');
+
+          videoSender?.replaceTrack(videoTrack);
+        }
       }
-    });
-  }, [userMedia]);
+    })();
+  }, [localStream]);
 
   // Socket.io Function
   useEffect(() => {
     socketIo.current = io('http://localhost:8080');
 
+    // socket 연결
     socketIo.current.on('connection', (msg) => {
       console.log(msg);
     });
 
+    // 방 입장
     socketIo.current.on('join_room', (msg, countRoom) => {
       console.log(msg);
       console.log(countRoom);
@@ -104,30 +123,50 @@ const RTC = () => {
 
     // peer 연결 및 offer 전송
     socketIo.current.on('connectPeer', async () => {
+      dataChannel.current = rtc.current?.createDataChannel('chat');
+
+      if (dataChannel.current)
+        dataChannel.current.onmessage = (e) => {
+          console.log(dataChannel.current);
+        };
+
       const offer = await rtc.current?.createOffer();
       rtc.current?.setLocalDescription(offer);
-
-      console.log('send offer');
+      console.log('peer connect');
 
       socketIo.current?.emit('offer', offer, room.current);
+      console.log('send offer');
     });
 
     // offer 수신 및 answer 전송
     socketIo.current.on('offer', async (offer) => {
+      if (rtc.current)
+        rtc.current.ondatachannel = (e) => {
+          dataChannel.current = e.channel;
+          dataChannel.current.onmessage = (e) => {
+            console.log(e);
+          };
+        };
+
       rtc.current?.setRemoteDescription(offer);
       const answer = await rtc.current?.createAnswer();
+      console.log('get offer');
 
       rtc.current?.setLocalDescription(answer);
       socketIo.current?.emit('answer', answer, room.current);
+      console.log('send answer');
     });
 
     // answer 수신
     socketIo.current.on('answer', async (answer) => {
       rtc.current?.setRemoteDescription(answer);
+      console.log('get answer');
     });
 
+    // ice 수신
     socketIo.current.on('ice', (ice) => {
       rtc.current?.addIceCandidate(ice);
+      console.log('get ice');
     });
 
     socketIo.current.on('exit', (msg) => {
@@ -143,27 +182,16 @@ const RTC = () => {
   const onChangeDeviceFn = (e: ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
     setDevices({ ...devices, [name]: value });
-
-    if (rtc.current && name === 'videoId') {
-      const videoSender = rtc.current
-        .getSenders()
-        .find((sender) => sender.track?.kind === 'video');
-
-      const videoTrack = userMedia?.getVideoTracks()[0];
-      console.log(videoTrack);
-
-      videoTrack && videoSender?.replaceTrack(videoTrack);
-    }
   };
 
-  const onClickMuteFn = () => {
-    userMedia
+  const onClickAudioToggleFn = () => {
+    localStream
       ?.getAudioTracks()
       .forEach((track) => (track.enabled = !track.enabled));
   };
 
-  const onClickCameraFn = () => {
-    userMedia
+  const onClickToggleCameraFn = () => {
+    localStream
       ?.getVideoTracks()
       .forEach((track) => (track.enabled = !track.enabled));
   };
@@ -180,6 +208,7 @@ const RTC = () => {
 
   return (
     <>
+      <h1>{roomName}</h1>
       <div>
         <form onSubmit={onSubmitEnterRoomFn}>
           <input
@@ -194,22 +223,22 @@ const RTC = () => {
       </div>
       <div>
         <video
-          ref={videoRef}
+          ref={localVideoRef}
           autoPlay
           playsInline
           width={400}
           height={400}
         ></video>
         <video
-          ref={opponentVideoRef}
+          ref={remoteVideoRef}
           autoPlay
           playsInline
           width={400}
           height={400}
         ></video>
         <div>
-          <button onClick={onClickMuteFn}>mute</button>
-          <button onClick={onClickCameraFn}>camera</button>
+          <button onClick={onClickAudioToggleFn}>mute</button>
+          <button onClick={onClickToggleCameraFn}>camera</button>
 
           <select name="videoId" onChange={onChangeDeviceFn}>
             {cameras?.map((camera) => (
