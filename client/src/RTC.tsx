@@ -22,8 +22,6 @@ const RTC = () => {
   // MediaDevices Function
   const getMedia = async () => {
     try {
-      console.log(devices);
-
       const myStream = await navigator.mediaDevices.getUserMedia({
         audio: devices.audioId !== '' ? { deviceId: devices.audioId } : true,
         video: devices.videoId !== '' ? { deviceId: devices.videoId } : true,
@@ -94,7 +92,7 @@ const RTC = () => {
           .find((sender) => sender.track?.kind === 'video');
 
         console.log(videoSender);
-        console.log(localStream?.getVideoTracks());
+        console.log(localStream?.getVideoTracks()[0]);
 
         // bug
         if (videoTrack) {
@@ -123,12 +121,12 @@ const RTC = () => {
 
     // peer 연결 및 offer 전송
     socketIo.current.on('connectPeer', async () => {
-      dataChannel.current = rtc.current?.createDataChannel('chat');
+      // dataChannel.current = rtc.current?.createDataChannel('chat');
 
-      if (dataChannel.current)
-        dataChannel.current.onmessage = (e) => {
-          console.log(dataChannel.current);
-        };
+      // if (dataChannel.current)
+      //   dataChannel.current.onmessage = (e) => {
+      //     console.log(dataChannel.current);
+      //   };
 
       const offer = await rtc.current?.createOffer();
       rtc.current?.setLocalDescription(offer);
